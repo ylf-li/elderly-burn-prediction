@@ -1,8 +1,7 @@
 """
-老年人烧伤伤口感染风险预测系统
-Streamlit Web应用
-=====================================
 Elderly Burn Wound Infection Risk Prediction System
+Streamlit Web Application
+=====================================
 """
 
 import streamlit as st
@@ -14,17 +13,17 @@ import pickle
 import plotly.graph_objects as go
 
 # ================================
-# 页面配置
+# Page Configuration
 # ================================
 st.set_page_config(
-    page_title="老年人烧伤伤口感染预测",
+    page_title="Elderly Burn Wound Infection Prediction",
     page_icon="🏥",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ================================
-# 自定义CSS样式
+# Custom CSS Styles
 # ================================
 st.markdown("""
 <style>
@@ -68,35 +67,34 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ================================
-# 加载模型和相关文件
+# Load Model and Related Files
 # ================================
 @st.cache_resource
 def load_model():
-    """加载CatBoost模型"""
+    """Load Ensemble Model"""
     model = CatBoostClassifier()
-    model.load_model('catboost_model.cbm')
+    model.load_model('ensemble_model.cbm')
     return model
 
 @st.cache_resource
 def load_feature_names():
-    """加载特征名称"""
+    """Load Feature Names"""
     with open('feature_names.pkl', 'rb') as f:
         return pickle.load(f)
 
 @st.cache_resource
 def load_shap_explainer():
-    """加载SHAP解释器 - 使用模型重新创建"""
-    import shap
-    model = load_model()
-    return shap.TreeExplainer(model)
+    """Load SHAP Explainer"""
+    with open('shap_explainer.pkl', 'rb') as f:
+        return pickle.load(f)
 
 @st.cache_resource
 def load_feature_ranges():
-    """加载特征范围"""
+    """Load Feature Ranges"""
     with open('feature_ranges.pkl', 'rb') as f:
         return pickle.load(f)
 
-# 尝试加载所有资源
+# Try to load all resources
 try:
     model = load_model()
     feature_names = load_feature_names()
@@ -105,143 +103,148 @@ try:
     model_loaded = True
 except Exception as e:
     model_loaded = False
-    st.error(f"模型加载失败: {str(e)}")
+    st.error(f"Model loading failed: {str(e)}")
     st.stop()
 
 # ================================
-# 特征描述和单位（中英文对照）
+# Feature Information
 # ================================
 FEATURE_INFO = {
     'age': {
-        'name': '年龄分组 (Age Group)',
+        'name': 'Age Group',
         'unit': '',
         'type': 'select',
-        'options': {1: '60-69岁', 2: '70-79岁', 3: '≥80岁'},
-        'description': '患者年龄分组'
+        'options': {1: '60-69 years', 2: '70-79 years', 3: '≥80 years'},
+        'description': 'Patient age group'
     },
     'sex': {
-        'name': '性别 (Sex)',
+        'name': 'Sex',
         'unit': '',
         'type': 'select',
-        'options': {0: '女性', 1: '男性'},
-        'description': '患者性别'
+        'options': {0: 'Female', 1: 'Male'},
+        'description': 'Patient gender'
     },
     'TBSA': {
-        'name': '烧伤总面积 (TBSA)',
+        'name': 'Total Burn Surface Area (TBSA)',
         'unit': '%',
         'type': 'number',
-        'description': '总体烧伤面积占体表面积百分比'
+        'description': 'Total body surface area burned'
     },
     'with Full-thickness burn': {
-        'name': '全层烧伤面积',
+        'name': 'Full-thickness Burn Area',
         'unit': '%',
         'type': 'number',
-        'description': '全层烧伤（三度烧伤）面积百分比'
+        'description': 'Third-degree burn area percentage'
     },
     'with  inhalation injury': {
-        'name': '吸入性损伤',
+        'name': 'Inhalation Injury',
         'unit': '',
         'type': 'select',
-        'options': {0: '无', 1: '有'},
-        'description': '是否存在吸入性损伤'
+        'options': {0: 'No', 1: 'Yes'},
+        'description': 'Presence of inhalation injury'
     },
     'with shock': {
-        'name': '休克',
+        'name': 'Shock',
         'unit': '',
         'type': 'select',
-        'options': {0: '无', 1: '有'},
-        'description': '是否发生休克'
+        'options': {0: 'No', 1: 'Yes'},
+        'description': 'Occurrence of shock'
     },
     'Multimorbidity': {
-        'name': '合并症数量',
-        'unit': '个',
+        'name': 'Number of Comorbidities',
+        'unit': '',
         'type': 'number',
-        'description': '患者合并症的数量'
+        'description': 'Number of comorbid conditions'
     },
     'ICU admission': {
-        'name': 'ICU入住',
+        'name': 'ICU Admission',
         'unit': '',
         'type': 'select',
-        'options': {0: '否', 1: '是'},
-        'description': '是否入住ICU'
+        'options': {0: 'No', 1: 'Yes'},
+        'description': 'ICU admission status'
     },
     'Numbers of Indwelling Tubes': {
-        'name': '留置管数量',
-        'unit': '个',
+        'name': 'Number of Indwelling Tubes',
+        'unit': '',
         'type': 'number',
-        'description': '留置管道的数量'
+        'description': 'Number of indwelling tubes'
     },
     'surgery': {
-        'name': '手术',
+        'name': 'Surgery',
         'unit': '',
         'type': 'select',
-        'options': {0: '无', 1: '有'},
-        'description': '是否进行手术治疗'
+        'options': {0: 'No', 1: 'Yes'},
+        'description': 'Surgical intervention'
     },
     'Classes of antibiotics ': {
-        'name': '抗生素种类',
-        'unit': '种',
+        'name': 'Classes of Antibiotics',
+        'unit': '',
         'type': 'number',
-        'description': '使用的抗生素种类数'
+        'description': 'Number of antibiotic classes used'
     },
     'LOS': {
-        'name': '住院时间 (LOS)',
-        'unit': '天',
+        'name': 'Length of Stay (LOS)',
+        'unit': 'days',
         'type': 'number',
-        'description': '住院天数'
+        'description': 'Hospital length of stay'
     },
     'Serum Albumin': {
-        'name': '血清白蛋白',
+        'name': 'Serum Albumin',
         'unit': 'g/L',
         'type': 'number',
-        'description': '血清白蛋白水平'
+        'description': 'Serum albumin level'
     },
     'BMI': {
-        'name': '体重指数 (BMI)',
+        'name': 'Body Mass Index (BMI)',
         'unit': 'kg/m²',
         'type': 'number',
-        'description': '体重指数'
+        'description': 'Body mass index'
     },
     'Comorbid diabetes': {
-        'name': '合并糖尿病',
+        'name': 'Comorbid Diabetes',
         'unit': '',
         'type': 'select',
-        'options': {0: '无', 1: '有'},
-        'description': '是否合并糖尿病'
+        'options': {0: 'No', 1: 'Yes'},
+        'description': 'Presence of diabetes mellitus'
     },
     'Nutritional Support': {
-        'name': '营养支持',
+        'name': 'Nutritional Support',
         'unit': '',
         'type': 'select',
-        'options': {0: '无', 1: '有'},
-        'description': '是否接受营养支持治疗'
+        'options': {0: 'No', 1: 'Yes'},
+        'description': 'Nutritional support therapy'
     },
     'Using advanced wound dressings': {
-        'name': '高级敷料',
+        'name': 'Advanced Wound Dressings',
         'unit': '',
         'type': 'select',
-        'options': {0: '否', 1: '是'},
-        'description': '是否使用高级伤口敷料'
+        'options': {0: 'No', 1: 'Yes'},
+        'description': 'Use of advanced wound dressings'
     }
 }
 
 # ================================
-# 侧边栏 - 模型信息
+# Sidebar - Model Information
 # ================================
 with st.sidebar:
-    st.markdown("## 📋 模型信息")
-    st.markdown("**Model Information**")
+    st.markdown("## 📋 Model Information")
     
     st.markdown(f"""
-    - **模型类型**: CatBoost Classifier
-    - **训练数据**: 老年人烧伤临床数据
-    - **目标变量**: 伤口感染 (Wound Infection)
-    - **特征数量**: {len(feature_names)} 个临床指标
+    - **Model Type**: Ensemble Model (Stacking)
+    - **Base Models**: 
+        - Logistic Regression
+        - Random Forest
+        - XGBoost
+        - LightGBM
+        - CatBoost
+    - **Meta-learner**: CatBoost
+    - **Training Data**: Elderly burn patient clinical data
+    - **Target Variable**: Wound Infection
+    - **Number of Features**: {len(feature_names)} clinical indicators
     """)
     
     st.markdown("---")
-    st.markdown("## 📊 特征说明")
-    st.markdown("**Feature Description**")
+    st.markdown("## 📊 Feature Description")
     
     for feature in feature_names:
         info = FEATURE_INFO.get(feature, {'name': feature, 'unit': ''})
@@ -249,30 +252,29 @@ with st.sidebar:
             ranges = feature_ranges[feature]
             with st.expander(f"📌 {info['name']}"):
                 if info.get('unit'):
-                    st.markdown(f"**单位**: {info['unit']}")
-                st.markdown(f"**范围**: {ranges['min']:.1f} - {ranges['max']:.1f}")
-                st.markdown(f"**均值**: {ranges['mean']:.2f}")
+                    st.markdown(f"**Unit**: {info['unit']}")
+                st.markdown(f"**Range**: {ranges['min']:.1f} - {ranges['max']:.1f}")
+                st.markdown(f"**Mean**: {ranges['mean']:.2f}")
                 if 'description' in info:
-                    st.markdown(f"**说明**: {info['description']}")
+                    st.markdown(f"**Description**: {info['description']}")
 
 # ================================
-# 主页面标题
+# Main Page Title
 # ================================
-st.markdown('<p class="main-header">🏥 老年人烧伤伤口感染风险预测</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Elderly Burn Wound Infection Risk Prediction System</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-header">🏥 Elderly Burn Wound Infection Risk Prediction</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">AI-Powered Clinical Decision Support System</p>', unsafe_allow_html=True)
 
 st.markdown("---")
-st.markdown("### 📝 请输入患者的临床指标")
-st.markdown("Please input the patient's clinical indicators:")
+st.markdown("### 📝 Please Input Patient Clinical Indicators")
 
 # ================================
-# 输入表单
+# Input Form
 # ================================
 col1, col2, col3 = st.columns(3)
 
 input_values = {}
 
-# 分配特征到三列
+# Distribute features to three columns
 features_list = list(feature_names)
 n_features = len(features_list)
 features_per_col = (n_features + 2) // 3
@@ -281,7 +283,7 @@ for idx, feature in enumerate(features_list):
     info = FEATURE_INFO.get(feature, {'name': feature, 'unit': '', 'type': 'number'})
     ranges = feature_ranges.get(feature, {'min': 0, 'max': 100, 'median': 50, 'mean': 50})
     
-    # 决定放在哪一列
+    # Determine which column
     if idx < features_per_col:
         col = col1
     elif idx < features_per_col * 2:
@@ -290,18 +292,18 @@ for idx, feature in enumerate(features_list):
         col = col3
     
     with col:
-        # 构建标签
+        # Build label
         if info.get('unit'):
             label = f"{info['name']} ({info['unit']})"
         else:
             label = info['name']
         
         if info['type'] == 'select':
-            options = info.get('options', {0: '否', 1: '是'})
+            options = info.get('options', {0: 'No', 1: 'Yes'})
             option_keys = list(options.keys())
             option_labels = list(options.values())
             
-            # 找到默认值的索引
+            # Find default value index
             default_val = int(ranges.get('median', 0))
             if default_val in option_keys:
                 default_idx = option_keys.index(default_val)
@@ -315,15 +317,15 @@ for idx, feature in enumerate(features_list):
                 key=feature,
                 help=info.get('description', '')
             )
-            # 将标签转回数值
+            # Convert label back to numeric value
             input_values[feature] = option_keys[option_labels.index(selected_label)]
         else:
-            # 数值输入
+            # Numeric input
             min_val = float(ranges['min'])
             max_val = float(ranges['max'])
             default_val = float(ranges['median'])
             
-            # 根据范围决定步长
+            # Determine step size based on range
             if max_val - min_val > 100:
                 step = 1.0
             elif max_val - min_val > 10:
@@ -334,7 +336,7 @@ for idx, feature in enumerate(features_list):
             input_values[feature] = st.number_input(
                 label,
                 min_value=min_val,
-                max_value=max_val * 1.5,  # 允许一定超出范围
+                max_value=max_val * 1.5,  # Allow some exceeding
                 value=default_val,
                 step=step,
                 key=feature,
@@ -342,60 +344,59 @@ for idx, feature in enumerate(features_list):
             )
 
 # ================================
-# 预测按钮
+# Prediction Button
 # ================================
 st.markdown("---")
 
 col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
 with col_btn2:
-    predict_button = st.button("🔮 预测 Predict", type="primary", use_container_width=True)
+    predict_button = st.button("🔮 Predict Risk", type="primary", use_container_width=True)
 
 # ================================
-# 预测结果
+# Prediction Results
 # ================================
 if predict_button:
-    # 准备输入数据
+    # Prepare input data
     input_df = pd.DataFrame([input_values])
     
-    # 进行预测
+    # Make prediction
     prediction_proba = model.predict_proba(input_df)[0]
     risk_probability = prediction_proba[1] * 100
     
     # ================================
-    # 显示预测结果
+    # Display Prediction Results
     # ================================
     st.markdown("---")
-    st.markdown("## 📊 预测结果 Prediction Results")
+    st.markdown("## 📊 Prediction Results")
     
     col_result1, col_result2 = st.columns([1, 1])
     
     with col_result1:
-        st.markdown("### 伤口感染风险")
-        st.markdown("**Risk of Wound Infection**")
+        st.markdown("### Wound Infection Risk Probability")
         
-        # 大字体显示概率
+        # Large font display probability
         st.markdown(f"""
         <div style="text-align: center; padding: 2rem; background-color: #f8f9fa; border-radius: 10px; margin: 1rem 0;">
             <h1 style="font-size: 4rem; margin: 0; color: #1f4e79;">{risk_probability:.1f}%</h1>
         </div>
         """, unsafe_allow_html=True)
         
-        # 风险等级判断
+        # Risk level determination
         if risk_probability < 30:
-            risk_level = "低风险 (Low Risk)"
+            risk_level = "Low Risk"
             risk_color = "#00cc66"
             risk_emoji = "🟢"
-            risk_advice = "感染风险较低，建议常规护理和观察。"
+            risk_advice = "Low infection risk. Routine care and monitoring recommended."
         elif risk_probability < 60:
-            risk_level = "中等风险 (Medium Risk)"
+            risk_level = "Medium Risk"
             risk_color = "#ffa500"
             risk_emoji = "🟡"
-            risk_advice = "存在一定感染风险，建议加强监测和预防措施。"
+            risk_advice = "Moderate infection risk. Enhanced monitoring and preventive measures recommended."
         else:
-            risk_level = "高风险 (High Risk)"
+            risk_level = "High Risk"
             risk_color = "#ff4b4b"
             risk_emoji = "🔴"
-            risk_advice = "感染风险较高，建议采取积极预防和治疗措施。"
+            risk_advice = "High infection risk. Active prevention and treatment measures strongly recommended."
         
         st.markdown(f"""
         <div style="text-align: center; padding: 1rem; background-color: {risk_color}20; 
@@ -404,16 +405,16 @@ if predict_button:
         </div>
         """, unsafe_allow_html=True)
         
-        st.info(f"💡 **建议**: {risk_advice}")
+        st.info(f"💡 **Clinical Recommendation**: {risk_advice}")
     
     with col_result2:
-        # 创建仪表盘图
+        # Create gauge chart
         fig = go.Figure(go.Indicator(
-            mode="gauge+number+delta",
+            mode="gauge+number",
             value=risk_probability,
             number={'suffix': '%', 'font': {'size': 40}},
             domain={'x': [0, 1], 'y': [0, 1]},
-            title={'text': "感染风险概率<br>Infection Risk", 'font': {'size': 16}},
+            title={'text': "Infection Risk Probability", 'font': {'size': 16}},
             gauge={
                 'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
                 'bar': {'color': "darkblue", 'thickness': 0.3},
@@ -441,15 +442,15 @@ if predict_button:
         st.plotly_chart(fig, use_container_width=True)
     
     # ================================
-    # SHAP分析
+    # SHAP Analysis
     # ================================
     st.markdown("---")
-    st.markdown("## 🔍 模型解释 Model Interpretation")
+    st.markdown("## 🔍 Model Interpretation (SHAP Analysis)")
     
-    # 计算SHAP值
+    # Calculate SHAP values
     shap_values = explainer.shap_values(input_df)
     
-    # 获取基准值
+    # Get base value
     if hasattr(explainer, 'expected_value'):
         if isinstance(explainer.expected_value, np.ndarray):
             base_value = explainer.expected_value[1] if len(explainer.expected_value) > 1 else explainer.expected_value[0]
@@ -458,7 +459,7 @@ if predict_button:
     else:
         base_value = 0
     
-    # 处理SHAP值
+    # Process SHAP values
     if isinstance(shap_values, list):
         shap_vals = shap_values[1][0] if len(shap_values) > 1 else shap_values[0][0]
     elif len(shap_values.shape) == 2:
@@ -466,42 +467,42 @@ if predict_button:
     else:
         shap_vals = shap_values
     
-    # 创建SHAP数据框
+    # Create SHAP dataframe
     shap_df = pd.DataFrame({
         'Feature': feature_names,
-        'Feature_CN': [FEATURE_INFO.get(f, {'name': f})['name'] for f in feature_names],
+        'Feature_Name': [FEATURE_INFO.get(f, {'name': f})['name'] for f in feature_names],
         'Value': [input_values[f] for f in feature_names],
         'SHAP_Value': shap_vals
     }).sort_values('SHAP_Value', key=abs, ascending=True)
     
-    # 创建水平条形图
+    # Create horizontal bar chart
     colors = ['#ff4b4b' if x > 0 else '#0068c9' for x in shap_df['SHAP_Value']]
     
     fig_shap = go.Figure()
     
     fig_shap.add_trace(go.Bar(
-        y=[f"{row['Feature_CN']}<br>= {row['Value']:.1f}" for _, row in shap_df.iterrows()],
+        y=[f"{row['Feature_Name']}<br>= {row['Value']:.1f}" for _, row in shap_df.iterrows()],
         x=shap_df['SHAP_Value'],
         orientation='h',
         marker_color=colors,
         text=[f"{x:.3f}" for x in shap_df['SHAP_Value']],
         textposition='outside',
-        hovertemplate='<b>%{y}</b><br>SHAP值: %{x:.4f}<extra></extra>'
+        hovertemplate='<b>%{y}</b><br>SHAP Value: %{x:.4f}<extra></extra>'
     ))
     
     fig_shap.add_vline(x=0, line_width=2, line_dash="solid", line_color="gray")
     
     fig_shap.update_layout(
         title={
-            'text': "SHAP特征贡献分析<br><sup>Feature Contribution Analysis</sup>",
+            'text': "SHAP Feature Contribution Analysis",
             'x': 0.5,
             'xanchor': 'center'
         },
-        xaxis_title="SHAP值 (正值增加风险，负值降低风险)",
+        xaxis_title="SHAP Value (Positive = Increases Risk, Negative = Decreases Risk)",
         yaxis_title="",
         height=500,
         showlegend=False,
-        margin=dict(l=200, r=50, t=80, b=50),
+        margin=dict(l=250, r=50, t=80, b=50),
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)'
     )
@@ -511,90 +512,99 @@ if predict_button:
     
     st.plotly_chart(fig_shap, use_container_width=True)
     
-    # SHAP解释说明
+    # SHAP interpretation explanation
     col_exp1, col_exp2 = st.columns(2)
     with col_exp1:
         st.markdown("""
         <div style="background-color: #fff3cd; padding: 1rem; border-radius: 5px; border-left: 5px solid #ff4b4b;">
-            <h4 style="color: #ff4b4b; margin: 0;">🔴 正向贡献（增加风险）</h4>
-            <p style="margin: 0.5rem 0 0 0;">红色条形表示该特征的当前值会增加伤口感染的风险概率。</p>
+            <h4 style="color: #ff4b4b; margin: 0;">🔴 Positive Contribution (Increases Risk)</h4>
+            <p style="margin: 0.5rem 0 0 0;">Red bars indicate that the current value of this feature increases the wound infection risk probability.</p>
         </div>
         """, unsafe_allow_html=True)
     
     with col_exp2:
         st.markdown("""
         <div style="background-color: #d4edda; padding: 1rem; border-radius: 5px; border-left: 5px solid #0068c9;">
-            <h4 style="color: #0068c9; margin: 0;">🔵 负向贡献（降低风险）</h4>
-            <p style="margin: 0.5rem 0 0 0;">蓝色条形表示该特征的当前值会降低伤口感染的风险概率。</p>
+            <h4 style="color: #0068c9; margin: 0;">🔵 Negative Contribution (Decreases Risk)</h4>
+            <p style="margin: 0.5rem 0 0 0;">Blue bars indicate that the current value of this feature decreases the wound infection risk probability.</p>
         </div>
         """, unsafe_allow_html=True)
     
     # ================================
-    # 特征贡献表格
+    # Feature Contribution Table
     # ================================
     st.markdown("---")
-    st.markdown("### 📋 特征贡献分析表 Feature Contribution Analysis Table")
+    st.markdown("### 📋 Feature Contribution Analysis Table")
     
-    # 格式化表格数据
+    # Format table data
     display_df = shap_df.sort_values('SHAP_Value', key=abs, ascending=False).copy()
-    display_df['No.'] = range(1, len(display_df) + 1)
+    display_df['Rank'] = range(1, len(display_df) + 1)
     display_df['SHAP_Value'] = display_df['SHAP_Value'].round(4)
     display_df['Contribution'] = display_df['SHAP_Value'].apply(
-        lambda x: '↑ 增加风险' if x > 0 else '↓ 降低风险'
+        lambda x: '↑ Increases Risk' if x > 0 else '↓ Decreases Risk'
     )
-    display_df['Abs_SHAP'] = display_df['SHAP_Value'].abs()
     
-    # 显示表格
+    # Display table
     st.dataframe(
-        display_df[['No.', 'Feature_CN', 'Value', 'SHAP_Value', 'Contribution']].rename(columns={
-            'No.': '排名',
-            'Feature_CN': '特征名称',
-            'Value': '输入值',
-            'SHAP_Value': 'SHAP值',
-            'Contribution': '贡献方向'
+        display_df[['Rank', 'Feature_Name', 'Value', 'SHAP_Value', 'Contribution']].rename(columns={
+            'Feature_Name': 'Feature Name',
+            'Value': 'Input Value',
+            'SHAP_Value': 'SHAP Value',
+            'Contribution': 'Direction'
         }).reset_index(drop=True),
         use_container_width=True,
         hide_index=True
     )
 
 # ================================
-# 使用说明
+# Instructions
 # ================================
 st.markdown("---")
-st.markdown("## 📖 使用说明 Instructions")
+st.markdown("## 📖 User Instructions")
 
-with st.expander("点击展开使用说明 / Click to expand instructions", expanded=False):
+with st.expander("Click to expand instructions", expanded=False):
     st.markdown("""
-    ### 如何使用本系统
+    ### How to Use This System
     
-    1. **输入临床指标**: 在上方表单中填入患者的各项临床指标
-    2. **点击预测按钮**: 点击"预测"按钮获取结果
-    3. **查看结果**: 系统将显示伤口感染风险概率和风险等级
-    4. **理解SHAP分析**: 
-       - **红色条形**: 该特征增加了感染风险
-       - **蓝色条形**: 该特征降低了感染风险
-       - **条形长度**: 表示该特征对预测结果的影响程度
+    1. **Input Clinical Indicators**: Fill in the patient's clinical indicators in the form above
+    2. **Click Predict Button**: Click the "Predict Risk" button to get results
+    3. **View Results**: The system will display the wound infection risk probability and risk level
+    4. **Understand SHAP Analysis**: 
+       - **Red bars**: These features increase infection risk
+       - **Blue bars**: These features decrease infection risk
+       - **Bar length**: Indicates the magnitude of the feature's impact on the prediction
     
-    ### 风险等级说明
+    ### Risk Level Explanation
     
-    | 风险等级 | 概率范围 | 建议 |
-    |---------|---------|------|
-    | 🟢 低风险 | 0-30% | 常规护理和观察 |
-    | 🟡 中等风险 | 30-60% | 加强监测和预防措施 |
-    | 🔴 高风险 | 60-100% | 采取积极预防和治疗措施 |
+    | Risk Level | Probability Range | Recommendation |
+    |-----------|-------------------|----------------|
+    | 🟢 Low Risk | 0-30% | Routine care and monitoring |
+    | 🟡 Medium Risk | 30-60% | Enhanced monitoring and preventive measures |
+    | 🔴 High Risk | 60-100% | Active prevention and treatment measures |
     
-    ### 免责声明
+    ### Disclaimer
     
-    本系统仅供临床参考，不能替代医生的专业判断。实际诊疗决策应结合患者具体情况和临床经验。
+    This system is for clinical reference only and cannot replace professional medical judgment. Actual clinical decisions should be made in combination with the patient's specific situation and clinical experience.
+    
+    ### Model Information
+    
+    This prediction system uses an ensemble learning approach (Stacking) that combines five base models:
+    - Logistic Regression
+    - Random Forest
+    - XGBoost
+    - LightGBM
+    - CatBoost
+    
+    The meta-learner (CatBoost) integrates predictions from all base models to provide the final risk assessment.
     """)
 
 # ================================
-# 页脚
+# Footer
 # ================================
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #888; padding: 1rem;">
-    <p>老年人烧伤伤口感染风险预测系统 | Elderly Burn Wound Infection Risk Prediction System</p>
-    <p>Powered by CatBoost & SHAP | Built with Streamlit</p>
+    <p>Elderly Burn Wound Infection Risk Prediction System</p>
+    <p>Powered by Ensemble Learning (Stacking) & SHAP | Built with Streamlit</p>
 </div>
 """, unsafe_allow_html=True)
