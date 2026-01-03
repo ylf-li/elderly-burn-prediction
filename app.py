@@ -85,9 +85,10 @@ def load_feature_names():
 
 @st.cache_resource
 def load_shap_explainer():
-    """加载SHAP解释器"""
-    with open('shap_explainer.pkl', 'rb') as f:
-        return pickle.load(f)
+    """加载SHAP解释器 - 使用模型重新创建"""
+    import shap
+    model = load_model()
+    return shap.TreeExplainer(model)
 
 @st.cache_resource
 def load_feature_ranges():
